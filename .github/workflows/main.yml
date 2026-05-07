@@ -68,6 +68,10 @@ jobs:
             echo "错误：下载到的是 HTML 页面，不是 APK 文件"
             exit 1
           fi
+            unzip -t input.apk >/dev/null 2>&1 || {
+            echo "错误：input.apk 不是有效 APK 文件"
+            exit 1
+          }
 
       # 步骤7：执行构建
       - name: Build APK
