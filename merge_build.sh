@@ -180,13 +180,24 @@ DOWNLOAD_APK() {
     else
         # 普通APK模式下载逻辑
         APK_FILENAME="${GAME_SERVER}.apk"
-        echo "正在下载APK..."
-        curl -L -o "${DOWNLOAD_DIR}/${APK_FILENAME}" "${APK_URL}"
-        if [ $? -ne 0 ]; then
-            echo "APK下载失败"
-            exit 1
+        # 判断是否为本地文件
+        if [ -f "${APK_URL}" ]; then
+            echo "检测到本地APK文件: ${APK_URL}"
+            cp "${APK_URL}" "${DOWNLOAD_DIR}/${APK_FILENAME}"
+            if [ $? -ne 0 ]; then
+                echo "本地APK复制失败"
+                exit 1
+            fi
+            echo "本地APK复制完成"
+        else
+            echo "正在下载APK..."
+            curl -L -o "${DOWNLOAD_DIR}/${APK_FILENAME}" "${APK_URL}"
+            if [ $? -ne 0 ]; then
+                echo "APK下载失败"
+                exit 1
+            fi
+            echo "APK [${APK_FILENAME}] 下载完成"
         fi
-        echo "APK [${APK_FILENAME}] 下载完成"
     fi
 }
 
