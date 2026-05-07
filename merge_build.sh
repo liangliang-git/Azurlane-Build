@@ -184,6 +184,17 @@ DOWNLOAD_APK() {
         if [ -f "${APK_URL}" ]; then
             echo "检测到本地APK文件: ${APK_URL}"
             cp "${APK_URL}" "${DOWNLOAD_DIR}/${APK_FILENAME}"
+            file "${DOWNLOAD_DIR}/${APK_FILENAME}"
+
+            if file "${DOWNLOAD_DIR}/${APK_FILENAME}" | grep -i "HTML"; then
+                echo "错误：复制后的文件是 HTML，不是 APK"
+                exit 1
+            fi
+
+            unzip -t "${DOWNLOAD_DIR}/${APK_FILENAME}" >/dev/null 2>&1 || {
+                echo "错误：APK 文件无效或已损坏"
+                exit 1
+            }
             if [ $? -ne 0 ]; then
                 echo "本地APK复制失败"
                 exit 1
