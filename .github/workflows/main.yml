@@ -1,13 +1,13 @@
-name: APK AzurLane JMBQ Build Work
+name: APK AzurLane JMBQ Latest Patch Build Work
 
 on:
   workflow_dispatch:
     inputs:
       server_name:
-        description: '区服名称-必须（必须是英文字母！例如 Bilibili，台服和外服请使用XAPK AzurLane JMBQ Build Work）'
+        description: '区服名称，例如 Bilibili'
         required: true
         type: string
-        default: ''
+        default: 'Bilibili'
 
       download_url:
         description: 'Google Drive 链接或 APK 直链'
@@ -22,97 +22,111 @@ jobs:
     permissions:
       contents: write
 
+    env:
+      JMBQ_BUILD_TAG: "3.2.0"
+
     steps:
-      # 步骤1：检出仓库代码
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # 步骤2：设置 Java
       - name: Setup Java JDK
-        uses: actions/setup-java@v3.3.0
+        uses: actions/setup-java@v3
         with:
           java-version: "17"
-          distribution: "adopt"
+          distribution: "temurin"
 
-      # 步骤3：设置 Android SDK
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
-      # 步骤4：安装 Android build-tools
-      - name: Install build-tools
+      - name: Install dependencies
         run: |
+          sudo apt update
+          sudo apt install -y jq p7zip-full unzip
           yes | sdkmanager --install "build-tools;35.0.0"
-
-      # 步骤5：安装 Python + gdown
-      - name: Install gdown
-        run: |
           python3 -m pip install --upgrade pip
           pip install gdown
 
-      # 步骤6：下载 APK
-      - name: Download APK
+      - name: Download source APK
         run: |
-          echo "开始下载 APK..."
+          echo "开始下载官方 APK..."
 
           gdown "${{ github.event.inputs.download_url }}" -O input.apk
 
           echo "下载完成，检查文件..."
-
           ls -lh input.apk
+          file input.apk
 
-          FILE_TYPE=$(file input.apk)
-
-          echo "$FILE_TYPE"
-
-          if echo "$FILE_TYPE" | grep -i "HTML"; then
-            echo "错误：下载到的是 HTML 页面，不是 APK 文件"
+          if file input.apk | grep -i "HTML"; then
+            echo "错误：下载到的是 HTML 页面，不是 APK"
             exit 1
           fi
-            unzip -t input.apk >/dev/null 2>&1 || {
+
+          unzip -t input.apk >/dev/null 2>&1 || {
             echo "错误：input.apk 不是有效 APK 文件"
             exit 1
           }
 
-      # 步骤7：执行构建
-      - name: Build APK
+      - name: Build base JMBQ APK
         run: |
           chmod +x merge_build.sh
+          ./merge_build.sh "${{ github.event.inputs.server_name }}" "input.apk"
 
-          ./merge_build.sh \
-          "${{ github.event.inputs.server_name }}" \
-          "input.apk"
+      - name: Download latest JMBQ patch zip
+        run: |
+          echo "下载 JMBQ 最新补丁包..."
 
-      # 步骤8：创建 Release
+          API_RESPONSE=$(curl -s "https://api.github.com/repos/JMBQ/azurlane/releases/latest")
+
+          LATEST_TAG=$(echo "$API_RESPONSE" | jq -r '.tag_name')
+          echo "LATEST_JMBQ_VERSION=${LATEST_TAG}" >> "$GITHUB_ENV"
+
+          PATCH_URL=$(echo "$API_RESPONSE" | jq -r '.assets[] | select(.name | test("MOD_MENU.*\\.zip$")) | .browser_download_url' | head -n 1)
+
+          if [ -z "$PATCH_URL" ] || [ "$PATCH_URL" = "null" ]; then
+            echo "错误：没有找到 MOD_MENU_xxx.zip 补丁包"
+            echo "$API_RESPONSE" | jq -r '.assets[].name'
+            exit 1
+          fi
+
+          curl -L "$PATCH_URL" -o "MOD_MENU_${LATEST_TAG}.zip"
+
+          ls -lh "MOD_MENU_${LATEST_TAG}.zip"
+          unzip -t "MOD_MENU_${LATEST_TAG}.zip" >/dev/null 2>&1 || {
+            echo "错误：补丁 zip 文件损坏"
+            exit 1
+          }
+
       - name: Release and Upload Assets
         uses: ncipollo/release-action@v1
         with:
-          tag: "${{ env.JMBQ_VERSION }}-APK"
-
-          name: "AzurLane JMBQ ${{ env.JMBQ_VERSION }} Build APK"
-
-          artifacts: "${{ github.event.inputs.server_name }}-V.${{ env.VERSION }}.7z.*"
-
+          tag: "${{ env.LATEST_JMBQ_VERSION }}-APK"
+          name: "AzurLane JMBQ ${{ env.LATEST_JMBQ_VERSION }} Build APK + Latest Patch"
+          artifacts: "${{ github.event.inputs.server_name }}-V.${{ env.VERSION }}.7z.*,MOD_MENU_${{ env.LATEST_JMBQ_VERSION }}.zip"
           allowUpdates: true
-
           body: |
-            <details>
-              <summary>中文安装说明 - 点击展开</summary>
+            ## 中文说明
 
-              1. 下载对应服务器名称的所有 7z.00* 分卷文件
+            此流程使用 JMBQ 3.2.0 构建基础 APK，并额外附带最新 JMBQ 补丁包。
 
-              2. 只需要解压 XXX.7z.001 即可
+            ### 安装 APK
 
-              3. 在解压后的目录中安装 APK
+            1. 下载所有 `${{ github.event.inputs.server_name }}-V.xxx.7z.00*` 分卷
+            2. 只解压 `.7z.001`
+            3. 安装解压出来的 APK
 
-            </details>
+            ### 升级到最新 JMBQ
 
-            <details>
-              <summary>English Installation Instructions - Click to expand</summary>
+            1. 下载 `MOD_MENU_${{ env.LATEST_JMBQ_VERSION }}.zip`
+            2. 放到手机目录：
 
-              1. Download all files ending with 7z.00* for your server
+            `/storage/emulated/0/Android/data/游戏包名/files/`
 
-              2. Extract only the XXX.7z.001 file
+            3. 启动游戏后会自动升级补丁
 
-              3. Install the APK from the extracted folder
+            ## English
 
-            </details>
+            This workflow builds the base APK with JMBQ 3.2.0 and also uploads the latest `MOD_MENU_xxx.zip` patch.
+
+            Install the APK first, then place the patch zip into:
+
+            `/storage/emulated/0/Android/data/{game_package_name}/files/`
