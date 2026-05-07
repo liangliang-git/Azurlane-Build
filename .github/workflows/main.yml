@@ -1,4 +1,5 @@
 name: APK AzurLane JMBQ Build Work
+
 on:
   workflow_dispatch:
     inputs:
@@ -7,8 +8,9 @@ on:
         required: true
         type: string
         default: ''
+
       download_url:
-        description: 'APK下载链接（只能填入直链，最好使用国外云盘的直链，例如Google云盘）'
+        description: 'Google Drive 链接或 APK 直链'
         required: true
         type: string
         default: ''
@@ -16,6 +18,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+
     permissions:
       contents: write
 
@@ -23,8 +26,8 @@ jobs:
       # 步骤1：检出仓库代码
       - name: Checkout code
         uses: actions/checkout@v4
-      
-      # 步骤2：设置 Java JDK
+
+      # 步骤2：设置 Java
       - name: Setup Java JDK
         uses: actions/setup-java@v3.3.0
         with:
@@ -35,36 +38,78 @@ jobs:
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
 
-      # 步骤4：安装 build-tools
+      # 步骤4：安装 Android build-tools
       - name: Install build-tools
         run: |
           yes | sdkmanager --install "build-tools;35.0.0"
-      
-      # 步骤5：执行构建流程
+
+      # 步骤5：安装 Python + gdown
+      - name: Install gdown
+        run: |
+          python3 -m pip install --upgrade pip
+          pip install gdown
+
+      # 步骤6：下载 APK
+      - name: Download APK
+        run: |
+          echo "开始下载 APK..."
+
+          gdown "${{ github.event.inputs.download_url }}" -O input.apk
+
+          echo "下载完成，检查文件..."
+
+          ls -lh input.apk
+
+          FILE_TYPE=$(file input.apk)
+
+          echo "$FILE_TYPE"
+
+          if echo "$FILE_TYPE" | grep -i "HTML"; then
+            echo "错误：下载到的是 HTML 页面，不是 APK 文件"
+            exit 1
+          fi
+
+      # 步骤7：执行构建
       - name: Build APK
         run: |
           chmod +x merge_build.sh
-          ./merge_build.sh "${{ github.event.inputs.server_name }}" "${{ github.event.inputs.download_url }}"
 
-      # 步骤6：创建 Release 并上传所有分卷文件
+          ./merge_build.sh \
+          "${{ github.event.inputs.server_name }}" \
+          "input.apk"
+
+      # 步骤8：创建 Release
       - name: Release and Upload Assets
         uses: ncipollo/release-action@v1
         with:
           tag: "${{ env.JMBQ_VERSION }}-APK"
+
           name: "AzurLane JMBQ ${{ env.JMBQ_VERSION }} Build APK"
+
           artifacts: "${{ github.event.inputs.server_name }}-V.${{ env.VERSION }}.7z.*"
+
           allowUpdates: true
+
           body: |
             <details>
               <summary>中文安装说明 - 点击展开</summary>
-                1. 在下方列表中找到你需要的版本前缀，下载该服务器名称前缀的所有以 7z.00* 结尾的文件</br>
-                2. 解压时只需要选择"XXX.7z.001"解压即可</br>
-                3. 在解压后的文件夹中找到apk文件并安装
+
+              1. 下载对应服务器名称的所有 7z.00* 分卷文件
+
+              2. 只需要解压 XXX.7z.001 即可
+
+              3. 在解压后的目录中安装 APK
+
             </details>
-            
+
             <details>
               <summary>English Installation Instructions - Click to expand</summary>
-                1. Find the version prefix you need in the list below, and download all files ending with 7z.00* that have that server name prefix</br>
-                2. When extracting, simply select the "XXX.7z.001" file to decompress</br>
-                3. Find the APK file in the extracted folder and install it
+
+              1. Download all files ending with 7z.00* for your server
+
+              2. Extract only the XXX.7z.001 file
+
+              3. Install the APK from the extracted folder
+
             </details>
+```
